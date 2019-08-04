@@ -68,4 +68,4 @@ class IKA(nn.Module):
                 psi_[p] = psi
                 psi = psi_
 
-            self.linear = nn.Parameter(torch.FloatTensor(psi))
+            self.linear = nn.Parameter(torch.FloatTensor(psi)).to(X.device)
