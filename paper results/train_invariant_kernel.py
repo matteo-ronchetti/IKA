@@ -96,6 +96,7 @@ def main():
 
     if args.precomputed:
         G, filters, sigma = load_npz(args.precomputed, "G", "filters", "sigma")
+        G = torch.FloatTensor(G).to(device)
         sigma = float(sigma)
     else:
         print("Feeding data through model...")
@@ -154,5 +155,6 @@ def main():
 
     for epoch in range(10):
         pass
+
 
 main()
