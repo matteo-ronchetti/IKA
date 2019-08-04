@@ -62,6 +62,33 @@ def load_npz(path, *names):
     return (obj[n] for n in names)
 
 
+class BatchGenerator:
+    def __init__(self, batch_size, X, device):
+        self.batch_size = batch_size
+        self.X = X
+
+        self.s = 0
+        self.size = self.X.shape[0]
+
+        self.device = device
+
+        self.p = None
+        self.shuffle()
+
+    def shuffle(self):
+        self.s = 0
+        self.p = np.random.permutation(self.size)
+
+    def next_batch(self):
+        if self.s + self.batch_size > self.size:
+            self.shuffle()
+
+        x = self.X[self.p[self.s: self.s + self.batch_size]]
+        self.s += self.batch_size
+
+        return x.to(self.device)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="data/rome_patches.npz")
@@ -153,14 +180,17 @@ def main():
 
     optimizer = torch.optim.Adam(ika_features.parameters(), lr=1e-4)
 
+    x_batches = BatchGenerator(256, X, device)
+    y_batches = BatchGenerator(256, X, device)
+
     for epoch in range(20):
         tot_loss = 0
         for iter in tqdm(range(25)):
             tx = random_transform()
             ty = random_transform()
 
-            x = torch.FloatTensor(np.random.choice(X, 256, replace=False) / 255).to(device)
-            y = torch.FloatTensor(np.random.choice(X, 256, replace=False) / 255).to(device)
+            x = x_batches.next_batch() / 255
+            y = y_batches.next_batch() / 255
 
             fx = ika(x)
             fy = ika(y)
