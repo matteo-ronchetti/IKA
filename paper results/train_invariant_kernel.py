@@ -189,13 +189,13 @@ def main():
             tx = random_transform()
             ty = random_transform()
 
-            x = x_batches.next_batch() / 255
+            xx = x_batches.next_batch() / 255
             y = y_batches.next_batch() / 255
 
-            fx = ika(T(x))
+            fx = ika(T(xx))
             fy = ika(T(y))
 
-            G_ = torch.exp((model(tx(x)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
+            G_ = torch.exp((model(tx(xx)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
 
             loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
