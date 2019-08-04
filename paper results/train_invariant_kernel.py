@@ -86,7 +86,7 @@ class BatchGenerator:
         x = self.X[self.p[self.s: self.s + self.batch_size]]
         self.s += self.batch_size
 
-        return x.to(self.device)
+        return torch.FloatTensor(x).to(self.device)
 
 
 def main():
