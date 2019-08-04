@@ -192,8 +192,8 @@ def main():
             x = x_batches.next_batch() / 255
             y = y_batches.next_batch() / 255
 
-            fx = ika(x)
-            fy = ika(y)
+            fx = ika(T(x))
+            fy = ika(T(y))
 
             G_ = fx @ fy.t()
             G = torch.exp((model(tx(x)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
