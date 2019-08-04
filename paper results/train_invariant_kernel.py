@@ -153,8 +153,36 @@ def main():
 
     optimizer = torch.optim.Adam(ika_features.parameters(), lr=1e-4)
 
-    for epoch in range(10):
-        pass
+    for epoch in range(20):
+        tot_loss = 0
+        for iter in tqdm(range(25)):
+            tx = random_transform()
+            ty = random_transform()
+
+            x = torch.FloatTensor(np.random.choice(X, 256, replace=False) / 255).to(device)
+            y = torch.FloatTensor(np.random.choice(X, 256, replace=False) / 255).to(device)
+
+            fx = ika(x)
+            fy = ika(y)
+
+            G_ = fx @ fy.t()
+            G = torch.exp((model(tx(x)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
+
+            loss = torch.mean((G - G_) ** 2)
+            tot_loss += loss.item()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        print(epoch + 1, tot_loss)
+        ika.compute_linear_layer(T(x), G)
+
+        with torch.no_grad():
+            y = ika(T(x))
+            G_ = y @ y.t()
+            loss = torch.mean((G - G_) ** 2)
+            print("Error", loss.item())
 
 
 main()
