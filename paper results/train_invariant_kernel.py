@@ -195,10 +195,9 @@ def main():
             fx = ika(T(x))
             fy = ika(T(y))
 
-            G_ = fx @ fy.t()
-            G = torch.exp((model(tx(x)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
+            G_ = torch.exp((model(tx(x)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
 
-            loss = torch.mean((G - G_) ** 2)
+            loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
 
             optimizer.zero_grad()
