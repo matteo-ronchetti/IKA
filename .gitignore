@@ -1,2 +1,11 @@
 .idea/
 *.pyc
+
+*.npy
+*.npz
+*.mat
+*.pth
+
+build/
+dist/
+*.egg-info/

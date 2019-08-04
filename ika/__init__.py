@@ -35,6 +35,7 @@ class IKA(nn.Module):
 
             if eps == 0:
                 Q, R = torch.qr(B)
+                R = R.cpu().numpy()
                 r = B.size(1)
                 p = None
             else:
@@ -47,7 +48,7 @@ class IKA(nn.Module):
                 Q = torch.FloatTensor(Q[:, :r]).to(G.device)
                 R = R[:r, :r]
 
-            M = (Q.t() @ (G @ Q)).cpu().data.numpy()
+            M = (Q.t() @ (G @ Q)).data.cpu().numpy()
 
             # computes d and V
             d, V = scipy.linalg.eigh(M)
