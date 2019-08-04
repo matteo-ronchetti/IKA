@@ -89,15 +89,15 @@ def main():
 
     x = (torch.FloatTensor(X) / 255).to(device)
 
+    T = TransformPipeline(
+        SpatialTransformation(dst_size=(32, 32)),
+        Greyscale()
+    )
+
     if args.precomputed:
         G, filters, sigma = load_npz(args.precomputed, "G", "filters", "sigma")
         sigma = float(sigma)
     else:
-        T = TransformPipeline(
-            SpatialTransformation(dst_size=(32, 32)),
-            Greyscale()
-        )
-
         print("Feeding data through model...")
         with torch.no_grad():
             features = model(T(x)).data.cpu().numpy()
@@ -111,11 +111,11 @@ def main():
         print("Sigma", sigma)
 
         print("Estimating Gramian matrix...")
-        transformations = [T]# + [random_transform() for i in range(9)]
+        transformations = [T] + [random_transform() for i in range(9)]
 
         pb = tqdm(total=len(transformations) ** 2)
         with torch.no_grad():
-            G = torch.zeros((9000, 9000), dtype=torch.float32)
+            G = torch.zeros((9000, 9000), dtype=torch.float32).to(device)
 
             # TODO better mean computation
             for tx in transformations:
@@ -142,7 +142,7 @@ def main():
     ika_features = ika_features.to(device)
 
     ika = IKA(ika_features)
-    ika.compute_linear_layer(x, G)
+    ika.compute_linear_layer(T(x), G)
 
     with torch.no_grad():
         y = ika(x)
