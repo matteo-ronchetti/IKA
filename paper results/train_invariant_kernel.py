@@ -146,7 +146,7 @@ def main():
     ika.compute_linear_layer(T(x), G)
 
     with torch.no_grad():
-        y = ika(x)
+        y = ika(T(x))
         G_ = y @ y.t()
         loss = torch.mean((G - G_) ** 2)
         print("Error before training", loss.item())
