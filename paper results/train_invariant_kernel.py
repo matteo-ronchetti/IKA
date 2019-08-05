@@ -61,14 +61,14 @@ def compute_gramian(X, kernel, model, transformations):
     pb = tqdm(total=len(transformations) ** 2)
 
     with torch.no_grad():
-        G = torch.zeros((X.size(0), X.size()), dtype=torch.float32).to(X.device)
+        G = torch.zeros((X.size(0), X.size(0)), dtype=torch.float32).to(X.device)
 
         # TODO better mean computation
         for tx in transformations:
             fx = model(tx(X))
             for ty in transformations:
                 fy = model(ty(X))
-                G += kernel(fx, fy)  # torch.exp((fx @ fy.t() - 1.0) / sigma ** 2)
+                G += kernel(fx, fy)
                 pb.update(1)
         pb.close()
 
@@ -156,7 +156,7 @@ def main():
         sigma = float(sigma)
     else:
         print("Feeding dataset through HardNet...")
-        features = feed_model(X[:10000], lambda x: hardnet(T(x)), device, 128)
+        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
         print("Clustering features...")
         filters = kmeans(features, args.functions, n_iter=30, n_init=5, spherical=True)
