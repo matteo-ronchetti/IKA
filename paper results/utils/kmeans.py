@@ -48,11 +48,12 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
                   min_points_per_centroid=1, verbose=verbose,
                   spherical=spherical, seed=seed)
 
-    for k, v in kwargs.items():
+    for key, value in kwargs.items():
         # if this raises an exception, it means that it is a non-existent field
-        getattr(cp, k)
-        setattr(cp, k, v)
+        getattr(cp, key)
+        setattr(cp, key, value)
 
+    print(d, k)
     clus = faiss.Clustering(d, k, cp)
     if on_gpu:
         if cp.spherical:
