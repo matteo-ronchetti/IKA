@@ -190,7 +190,8 @@ def main():
 
     # Compute IKA
     ika = IKA(ika_features)
-    ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
+    x = X[:args.gram_size].to(device).float().unsqueeze(1) / 255
+    ika.compute_linear_layer(T(x), G, eps=1e-4)
 
     print("Error before training", ika.measure_error(X_test, G_val))
 
@@ -221,7 +222,7 @@ def main():
             loss.backward()
             optimizer.step()
 
-        ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
+        ika.compute_linear_layer(T(x), G, eps=1e-4)
         print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(X_test, G_val)}")
 
         torch.save({
