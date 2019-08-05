@@ -8,7 +8,7 @@ def feed_model(X, mdl, device, output_size, batch_size=1024 * 8):
         X = TensorDataset(X)
 
     dl = DataLoader(X, batch_size=batch_size, drop_last=False, pin_memory=True)
-    Y = torch.zeros((X.data.size(0), output_size), dtype=torch.float, device=device)
+    Y = torch.zeros((len(X), output_size), dtype=torch.float, device=device)
     s = 0
     with torch.no_grad():
         for x in tqdm(dl):
