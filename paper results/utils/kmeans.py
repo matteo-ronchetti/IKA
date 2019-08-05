@@ -63,7 +63,7 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
     if on_gpu:
         index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
 
-    clus.train(X, index)
+    clus.train(x_ptr, index)
 
     return faiss.vector_float_to_array(clus.centroids)
 
