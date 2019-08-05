@@ -12,10 +12,11 @@ def parse_array(X):
         if X.device == torch.device("cpu"):
             return X.cpu().numpy(), False
         else:
-            assert X.is_contiguous()
-            assert X.dtype == torch.float32
-            x_ptr = faiss.cast_integer_to_float_ptr(X.storage().data_ptr() + X.storage_offset() * 4)
-            return x_ptr, True
+            return X.cpu().numpy(), True
+            # assert X.is_contiguous()
+            # assert X.dtype == torch.float32
+            # x_ptr = faiss.cast_integer_to_float_ptr(X.storage().data_ptr() + X.storage_offset() * 4)
+            # return x_ptr, True
     else:
         return X, False
 
@@ -64,7 +65,7 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
     if on_gpu:
         index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
 
-    clus.train(num_vecs, x_ptr, index)
+    clus.train(x_ptr, index)
 
     return faiss.vector_float_to_array(clus.centroids)
 
