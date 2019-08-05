@@ -222,8 +222,7 @@ def main():
             optimizer.step()
 
         ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
-        print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(
-            X_test, G_val)}")
+        print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(X_test, G_val)}")
 
         torch.save({
             "features": ika_features.state_dict(),
