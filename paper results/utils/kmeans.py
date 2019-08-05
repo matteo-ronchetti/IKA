@@ -53,18 +53,16 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
         getattr(cp, key)
         setattr(cp, key, value)
 
-    print(d, k)
     clus = faiss.Clustering(d, k, cp)
-    if on_gpu:
-        if cp.spherical:
-            index = faiss.GpuIndexFlatIP(d)
-        else:
-            index = faiss.GpuIndexFlatL2(d)
+
+    if cp.spherical:
+        index = faiss.IndexFlatIP(d)
     else:
-        if cp.spherical:
-            index = faiss.IndexFlatIP(d)
-        else:
-            index = faiss.IndexFlatL2(d)
+        index = faiss.IndexFlatL2(d)
+
+    if on_gpu:
+        index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
+
     clus.train(X, index)
 
     return faiss.vector_float_to_array(clus.centroids)
