@@ -58,6 +58,8 @@ class BatchGenerator:
 
 
 def compute_gramian(X, kernel, model, transformations):
+    X = X.float().unsqueeze(1) / 255
+    print(X.device, X.size())
     pb = tqdm(total=len(transformations) ** 2)
 
     with torch.no_grad():
