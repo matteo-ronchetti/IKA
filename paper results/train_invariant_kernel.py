@@ -20,8 +20,8 @@ def random_transform():
     return TransformPipeline(
         SpatialTransformation(translation=(tn(0, 0.02), tn(0, 0.02)), rot=(tn(0, 0.02), tn(0, 0.02), tn(0, 0.02)),
                               scale=tn(1, 0.02), dst_size=(32, 32)),
-        Contrast(tn(1, 0.1)),
-        Greyscale()
+        # Contrast(tn(1, 0.1)),
+        # Greyscale()
     )
 
 
