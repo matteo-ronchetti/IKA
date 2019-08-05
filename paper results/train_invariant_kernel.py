@@ -177,8 +177,9 @@ def main():
                  sigma=sigma)
 
     # create ika features
-    W = filters / sigma ** 2
-    bias = -np.ones(args.functions, dtype=np.float32) / (sigma ** 2)
+    W = filters.reshape(-1, 128) / sigma ** 2
+    bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
+    print(W.shape, bias.shape)
 
     # create b function as hardnet + RBF layer
     ika_features = HardNetKernel()

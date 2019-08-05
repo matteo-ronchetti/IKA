@@ -67,7 +67,7 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
 
     clus.train(x_ptr, index)
 
-    return faiss.vector_float_to_array(clus.centroids)
+    return faiss.vector_float_to_array(clus.centroids).reshape(k, d)
 
 #
 # def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-1, seed=-1):
