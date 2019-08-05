@@ -1,8 +1,29 @@
 import argparse
 import torch
 import numpy as np
-from architectures.hardnet import HardNet
+from architectures.hardnet import HardNet, HardNetKernel
 from transformation import TransformPipeline, SpatialTransformation, Greyscale
+from ika import IKA
+
+import numba
+from numba import prange
+import math
+
+
+@numba.jit(parallel=True, nogil=True, fastmath=True, nopython=True)
+def _distance_matrix(D, X, Y):
+    for i in prange(D.shape[0]):
+        for j in prange(D.shape[1]):
+            tmp = 0
+            for k in range(X.shape[1]):
+                tmp += (X[i, k] - Y[j, k]) ** 2
+            D[i, j] = math.sqrt(tmp)
+
+
+def distance_matrix(X, Y):
+    D = np.empty((X.shape[0], Y.shape[0]), dtype=np.float32)
+    _distance_matrix(D, X, Y)
+    return D
 
 
 def test(x, x_test, y, y_test):
@@ -10,7 +31,7 @@ def test(x, x_test, y, y_test):
     # x /= np.linalg.norm(x, axis=1)[:, None]
     # x_test /= np.linalg.norm(x_test, axis=1)[:, None]
 
-    D = -x_test @ x.T  # distance_matrix(x_test, x)
+    D = distance_matrix(x_test, x)  # -x_test @ x.T  #
 
     ranks = np.argsort(D, axis=1)
 
@@ -47,18 +68,23 @@ def main():
         X = np.load(args.dataset)["X"]
         y = np.load(args.dataset)["y"]
 
+    T = TransformPipeline(
+        SpatialTransformation(dst_size=(32, 32)),
+        Greyscale()
+    )
+
     if args.model == "hardnet":
         model = HardNet()
         checkpoint = torch.load(args.model_path, map_location='cpu')
         model.load_state_dict(checkpoint['state_dict'])
-
-        T = TransformPipeline(
-            SpatialTransformation(dst_size=(32, 32)),
-            Greyscale()
-        )
     else:
-        model = None
-        T = TransformPipeline()
+        features = HardNetKernel()
+        data = torch.load("models/model.pth", map_location="cpu")
+        features.load_state_dict(data["features"])
+        features.eval()
+
+        model = IKA(features)
+        model.linear = data["ika"]
 
     print("Feeding data into model...")
     with torch.no_grad():

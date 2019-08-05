@@ -39,11 +39,14 @@ class IKA(nn.Module):
                 r = B.size(1)
                 p = None
             else:
-                B_norms = np.linalg.norm(B, axis=0)
-                Q, R, p = scipy.linalg.qr(B, mode="economic", pivoting=True)
+                B_ = B.data.cpu().numpy()
+                B_norms = np.linalg.norm(B_, axis=0)
+                Q, R, p = scipy.linalg.qr(B_, mode="economic", pivoting=True)
+                q = np.argsort(p)
 
                 residual = 1 - np.abs(np.diag(R)) / B_norms[p]
                 r = np.searchsorted(residual, 1 - eps)
+                print(r)
 
                 Q = torch.FloatTensor(Q[:, :r]).to(G.device)
                 R = R[:r, :r]
@@ -61,7 +64,7 @@ class IKA(nn.Module):
             rank = min(rank, Q.shape[1] - np.searchsorted(d, min_lambda))
 
             psi = V[:, -rank:] @ np.diag(d[-rank:])
-
+            psi = psi[q]
             # put zeros corresponding to the dropped functions
             if r != B.size(1):
                 psi_ = np.zeros((B.size(1), rank), dtype=np.float32)

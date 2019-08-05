@@ -50,9 +50,9 @@ def random_transform():
     tn = TruncatedNormal()
 
     return TransformPipeline(
-        SpatialTransformation(translation=(tn(0, 0.05), tn(0, 0.05)), rot=(tn(0, 0.05), tn(0, 0.05), tn(0, 0.05)),
-                              scale=tn(1, 0.05), dst_size=(32, 32)),
-        Contrast(tn(1, 0.2)),
+        SpatialTransformation(translation=(tn(0, 0.02), tn(0, 0.02)), rot=(tn(0, 0.02), tn(0, 0.02), tn(0, 0.02)),
+                              scale=tn(1, 0.02), dst_size=(32, 32)),
+        Contrast(tn(1, 0.1)),
         Greyscale()
     )
 
@@ -94,6 +94,8 @@ def main():
     parser.add_argument("--dataset", default="data/rome_patches.npz")
     parser.add_argument("--test", action="store_true", default=False)
     parser.add_argument("--precomputed", default=None)
+    parser.add_argument("--lr", default=1e-4, type=float)
+
 
     args = parser.parse_args()
 
@@ -111,6 +113,7 @@ def main():
 
     # load hardnet
     model = HardNet().to(device)
+    model.eval()
     checkpoint = torch.load("models/HardNet++.pth", map_location=device)
     model.load_state_dict(checkpoint['state_dict'])
 
@@ -139,7 +142,7 @@ def main():
         print("Sigma", sigma)
 
         print("Estimating Gramian matrix...")
-        transformations = [T] + [random_transform() for i in range(9)]
+        transformations = [random_transform() for i in range(20)]
 
         pb = tqdm(total=len(transformations) ** 2)
         with torch.no_grad():
@@ -170,7 +173,7 @@ def main():
     ika_features = ika_features.to(device)
 
     ika = IKA(ika_features)
-    ika.compute_linear_layer(T(x), G)
+    ika.compute_linear_layer(T(x), G, eps=1e-4)
 
     with torch.no_grad():
         y = ika(T(x))
@@ -178,14 +181,14 @@ def main():
         loss = torch.mean((G - G_) ** 2)
         print("Error before training", loss.item())
 
-    optimizer = torch.optim.Adam(ika_features.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(ika_features.parameters(), lr=args.lr)
 
-    x_batches = BatchGenerator(256, X, device)
-    y_batches = BatchGenerator(256, X, device)
+    x_batches = BatchGenerator(512, X, device)
+    y_batches = BatchGenerator(512, X, device)
 
     for epoch in range(20):
         tot_loss = 0
-        for iter in tqdm(range(25)):
+        for iter in tqdm(range(100)):
             tx = random_transform()
             ty = random_transform()
 
@@ -195,7 +198,8 @@ def main():
             fx = ika(T(xx))
             fy = ika(T(y))
 
-            G_ = torch.exp((model(tx(xx)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
+            with torch.no_grad():
+                G_ = torch.exp((model(tx(xx)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
 
             loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
@@ -205,13 +209,18 @@ def main():
             optimizer.step()
 
         print(epoch + 1, tot_loss)
-        ika.compute_linear_layer(T(x), G)
+        ika.compute_linear_layer(T(x), G, eps=1e-4)
 
         with torch.no_grad():
             y = ika(T(x))
             G_ = y @ y.t()
             loss = torch.mean((G - G_) ** 2)
             print("Error", loss.item())
+
+        torch.save({
+            "features": ika_features.state_dict(),
+            "ika": ika.linear
+        }, "model.pth")
 
 
 main()
