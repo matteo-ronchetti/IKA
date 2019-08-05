@@ -212,8 +212,8 @@ def main():
             tx = T  # random_transform()
             ty = T  # random_transform()
 
-            xx = x_batches.next_batch() / 255
-            y = y_batches.next_batch() / 255
+            xx = x_batches.next_batch()
+            y = y_batches.next_batch()
 
             fx = ika(T(xx))
             fy = ika(T(y))
