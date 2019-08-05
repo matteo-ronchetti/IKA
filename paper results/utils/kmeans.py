@@ -41,6 +41,7 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
 
     # parse input array
     x_ptr, on_gpu = parse_array(X)
+    num_vecs = X.size(0)
     d = X.size(1)
 
     cp = faiss.ClusteringParameters()
@@ -63,7 +64,7 @@ def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-
     if on_gpu:
         index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
 
-    clus.train(x_ptr, index)
+    clus.train(num_vecs, x_ptr, index)
 
     return faiss.vector_float_to_array(clus.centroids)
 
