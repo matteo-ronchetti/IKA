@@ -200,7 +200,7 @@ def main():
 
     print("Error before training", ika.measure_error(x_test, G_val))
 
-    optimizer = torch.optim.Adam(ika_features.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(ika.parameters(), lr=args.lr)
 
     x_batches = BatchGenerator(args.batch_size, X, device)
     y_batches = BatchGenerator(args.batch_size, X, device)
