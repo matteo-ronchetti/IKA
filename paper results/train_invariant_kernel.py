@@ -156,7 +156,7 @@ def main():
         sigma = float(sigma)
     else:
         print("Feeding dataset through HardNet...")
-        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
+        features = feed_model(X[:10000], lambda x: hardnet(T(x)), device, 128)
 
         print("Clustering features...")
         filters = kmeans(features, args.functions, n_iter=30, n_init=5, spherical=True)
