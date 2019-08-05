@@ -1,49 +1,17 @@
 import argparse
 import torch
 import numpy as np
-import faiss
-import random
 import copy
+from torchvision.datasets import PhotoTour
+from torch.utils.data import TensorDataset, random_split
+from utils.data import feed_model
+
 from tqdm import tqdm
 from architectures.hardnet import HardNet, HardNetKernel
 from transformation import TransformPipeline, SpatialTransformation, Contrast, Greyscale
 from transformation.random import TruncatedNormal
-
+from utils.kmeans import kmeans
 from ika import IKA
-
-
-def kmeans(X, k, n_iter=30, n_init=1, spherical=False, verbose=True, subsample=-1, seed=-1):
-    """
-    Run kmeans and return centroids
-    :param X: data
-    :param k: number of clusters
-    :param n_iter: number of iterations
-    :param n_init: number of times the algorithm will be executed
-    :param spherical:
-    :param verbose:
-    :param subsample: if specified it uses only "subsample" points per centroid
-    :param seed:
-    :return: centroids
-    """
-    if seed is None:
-        seed = random.seed()
-    if subsample == -1:
-        subsample = X.shape[0] // k + 1
-
-    km = faiss.Kmeans(X.shape[1], k, niter=n_iter, nredo=n_init, max_points_per_centroid=subsample,
-                      min_points_per_centroid=1, verbose=verbose,
-                      spherical=spherical, seed=seed)
-
-    if isinstance(X, torch.Tensor):
-        x_ptr = X.cpu().numpy()
-        # assert X.is_contiguous()
-        # assert X.dtype == torch.float32
-        # x_ptr = faiss.cast_integer_to_float_ptr(X.storage().data_ptr() + X.storage_offset() * 4)
-    else:
-        x_ptr = X
-
-    km.train(x_ptr)
-    return km.centroids
 
 
 def random_transform():
@@ -89,14 +57,74 @@ class BatchGenerator:
         return torch.FloatTensor(x).to(self.device)
 
 
+def compute_gramian(X, kernel, model, transformations):
+    pb = tqdm(total=len(transformations) ** 2)
+
+    with torch.no_grad():
+        G = torch.zeros((X.size(0), X.size()), dtype=torch.float32).to(X.device)
+
+        # TODO better mean computation
+        for tx in transformations:
+            fx = model(tx(X))
+            for ty in transformations:
+                fy = model(ty(X))
+                G += kernel(fx, fy)  # torch.exp((fx @ fy.t() - 1.0) / sigma ** 2)
+                pb.update(1)
+        pb.close()
+
+        G /= len(transformations) ** 2
+
+    return G
+
+
+def get_dataset_and_default_transform(name: str):
+    if name.startswith("rome"):
+        if name == "rome-test":
+            X = np.load("data/rome_patches.npz")["X_test"][1000:]
+        else:
+            X = np.load("data/rome_patches.npz")["X"][1000:]
+
+        # dataset = TensorDataset(X)
+
+        T = TransformPipeline(
+            SpatialTransformation(dst_size=(32, 32)),
+            Greyscale()
+        )
+    elif name == "liberty":
+        dataset = PhotoTour("data/phototour", "liberty", download=True)
+
+        X = dataset.data
+        T = TransformPipeline(
+            SpatialTransformation(dst_size=(32, 32))
+        )
+    else:
+        raise Exception(f"Unknown dataset '{name}'")
+
+    return X, T
+
+
+def RBF(sigma):
+    def k(x, y):
+        torch.exp((x @ y.t() - 1.0) / (sigma ** 2))
+
+    return k
+
+
+# noinspection PyArgumentList
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="data/rome_patches.npz")
+    parser.add_argument("--dataset", default="liberty")
     parser.add_argument("--test", action="store_true", default=False)
     parser.add_argument("--precomputed", default=None)
+    parser.add_argument("--functions", default=1024, type=int)
+    parser.add_argument("--n-transformations", default=20, type=int)
+    parser.add_argument("--gram-size", default=10000, type=int)
+    parser.add_argument("--sigma", default=1.0, type=float)
+
     parser.add_argument("--lr", default=1e-4, type=float)
-
-
+    parser.add_argument("--batch-size", default=512, type=int)
+    parser.add_argument("--iterations", default=20, type=int)
+    parser.add_argument("--iter-size", default=50, type=int)
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -105,90 +133,73 @@ def main():
     else:
         device = torch.device("cpu")
 
-    # load training data
-    if args.test:
-        X = np.load(args.dataset)["X_test"][1000:]
-    else:
-        X = np.load(args.dataset)["X"][1000:]
-
     # load hardnet
-    model = HardNet().to(device)
-    model.eval()
+    hardnet = HardNet().to(device)
+    hardnet.eval()
     checkpoint = torch.load("models/HardNet++.pth", map_location=device)
-    model.load_state_dict(checkpoint['state_dict'])
+    hardnet.load_state_dict(checkpoint['state_dict'])
 
-    x = (torch.FloatTensor(X) / 255).to(device)
+    X, T = get_dataset_and_default_transform(args.dataset)
 
-    T = TransformPipeline(
-        SpatialTransformation(dst_size=(32, 32)),
-        Greyscale()
-    )
+    # shuffle X, fix the seed to keep X_test and G_val "aligned" even when loading a precomputed G_val
+    torch.manual_seed(701)
+    X = X[torch.randperm(X.size(0))]
+
+    X_test = X[-2000:]
+    X_test = X_test.to(device)
+    X = X[:-2000]
 
     if args.precomputed:
-        G, filters, sigma = load_npz(args.precomputed, "G", "filters", "sigma")
+        G, G_val, filters, sigma = load_npz(args.precomputed, "G", "G_val", "filters", "sigma")
         G = torch.FloatTensor(G).to(device)
+        G_val = torch.FloatTensor(G_val).to(device)
         sigma = float(sigma)
     else:
-        print("Feeding data through model...")
-        with torch.no_grad():
-            features = model(T(x)).data.cpu().numpy()
+        print("Feeding dataset through HardNet...")
+        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
         print("Clustering features...")
-        filters = kmeans(features, 1024, n_iter=30, n_init=5, spherical=True)
+        filters = kmeans(features, args.functions, n_iter=30, n_init=5, spherical=True)
 
-        D = 2.0 - 2.0 * features @ features.T
-        D = np.sqrt(np.maximum(D, 0))
-        sigma = np.quantile(D, 0.01)
+        sigma = args.sigma
         print("Sigma", sigma)
 
         print("Estimating Gramian matrix...")
-        transformations = [random_transform() for i in range(20)]
+        transformations = [random_transform() for _ in range(args.n_transformations)]
 
-        pb = tqdm(total=len(transformations) ** 2)
-        with torch.no_grad():
-            G = torch.zeros((9000, 9000), dtype=torch.float32).to(device)
+        kernel = RBF(sigma)
+        G = compute_gramian(X[:args.gram_size].to(device), kernel, hardnet, transformations)
+        G_val = compute_gramian(X_test, kernel, hardnet, transformations)
 
-            # TODO better mean computation
-            for tx in transformations:
-                fx = model(tx(x))
-                for ty in transformations:
-                    fy = model(ty(x))
-                    G += torch.exp((fx @ fy.t() - 1.0) / sigma ** 2)
-                    pb.update(1)
-            pb.close()
-
-            G /= len(transformations) ** 2
-
-        np.savez("precomputed.npz", G=G.data.cpu().numpy(), filters=filters, sigma=sigma)
+        np.savez("precomputed.npz", G=G.data.cpu().numpy(), G_val=G_val.data.cpu().numpy(), filters=filters,
+                 sigma=sigma)
 
     # create ika features
     W = filters / sigma ** 2
-    bias = -np.ones(1024, dtype=np.float32) / (sigma ** 2)
+    bias = -np.ones(args.functions, dtype=np.float32) / (sigma ** 2)
 
+    # create b function as hardnet + RBF layer
     ika_features = HardNetKernel()
-    for i, l in enumerate(model.features):
+    for i, l in enumerate(hardnet.features):
         ika_features.features[i + 1] = copy.deepcopy(l)
     ika_features.features[-2].weight.data = torch.FloatTensor(W)
     ika_features.features[-2].bias.data = torch.FloatTensor(bias)
     ika_features = ika_features.to(device)
 
+    # Compute IKA
     ika = IKA(ika_features)
-    ika.compute_linear_layer(T(x), G, eps=1e-4)
+    ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
 
-    with torch.no_grad():
-        y = ika(T(x))
-        G_ = y @ y.t()
-        loss = torch.mean((G - G_) ** 2)
-        print("Error before training", loss.item())
+    print("Error before training", ika.measure_error(X_test, G_val))
 
     optimizer = torch.optim.Adam(ika_features.parameters(), lr=args.lr)
 
-    x_batches = BatchGenerator(512, X, device)
-    y_batches = BatchGenerator(512, X, device)
+    x_batches = BatchGenerator(args.batch_size, X, device)
+    y_batches = BatchGenerator(args.batch_size, X, device)
 
-    for epoch in range(20):
+    for iteration in range(args.iterations):
         tot_loss = 0
-        for iter in tqdm(range(100)):
+        for _ in tqdm(range(args.iter_size)):
             tx = random_transform()
             ty = random_transform()
 
@@ -199,7 +210,7 @@ def main():
             fy = ika(T(y))
 
             with torch.no_grad():
-                G_ = torch.exp((model(tx(xx)) @ model(ty(y)).t() - 1.0) / sigma ** 2)
+                G_ = torch.exp((hardnet(tx(xx)) @ hardnet(ty(y)).t() - 1.0) / sigma ** 2)
 
             loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
@@ -208,14 +219,8 @@ def main():
             loss.backward()
             optimizer.step()
 
-        print(epoch + 1, tot_loss)
-        ika.compute_linear_layer(T(x), G, eps=1e-4)
-
-        with torch.no_grad():
-            y = ika(T(x))
-            G_ = y @ y.t()
-            loss = torch.mean((G - G_) ** 2)
-            print("Error", loss.item())
+        ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
+        print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(X_test, G_val)}")
 
         torch.save({
             "features": ika_features.state_dict(),

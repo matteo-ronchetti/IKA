@@ -72,3 +72,9 @@ class IKA(nn.Module):
                 psi = psi_
 
             self.linear = nn.Parameter(torch.FloatTensor(psi)).to(X.device)
+
+    def measure_error(self, x, G):
+        with torch.no_grad():
+            y = self(x)
+            G_ = y @ y.t()
+            return torch.sqrt(torch.sum((G - G_) ** 2)).item()

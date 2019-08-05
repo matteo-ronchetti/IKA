@@ -1,6 +1,7 @@
 .idea/
 *.pyc
 
+paper\ results/data/
 *.npy
 *.npz
 *.mat
