@@ -54,7 +54,7 @@ class BatchGenerator:
         x = self.X[self.p[self.s: self.s + self.batch_size]]
         self.s += self.batch_size
 
-        return torch.FloatTensor(x).to(self.device)
+        return (x.float().unsqueeze(1) / 255).to(self.device)
 
 
 def compute_gramian(X, kernel, model, transformations):
