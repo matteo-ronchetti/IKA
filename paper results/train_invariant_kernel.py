@@ -209,8 +209,8 @@ def main():
     for iteration in range(args.iterations):
         tot_loss = 0
         for i in tqdm(range(args.iter_size)):
-            tx = random_transform()
-            ty = random_transform()
+            tx = T  # random_transform()
+            ty = T  # random_transform()
 
             xx = x_batches.next_batch() / 255
             y = y_batches.next_batch() / 255
