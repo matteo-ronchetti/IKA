@@ -221,7 +221,7 @@ def main():
             with torch.no_grad():
                 G_ = torch.exp((hardnet(tx(xx)) @ hardnet(ty(y)).t() - 1.0) / sigma ** 2)
 
-            loss = torch.mean((G_ - fx @ fy.t()) ** 2)
+            loss = torch.mean((G_ - fx @ fy.t()) ** 2) / args.accumulation_steps
             tot_loss += loss.item()
 
             loss.backward()
