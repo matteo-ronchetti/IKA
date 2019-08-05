@@ -107,7 +107,7 @@ def get_dataset_and_default_transform(name: str):
 
 def RBF(sigma):
     def k(x, y):
-        torch.exp((x @ y.t() - 1.0) / (sigma ** 2))
+        return torch.exp((x @ y.t() - 1.0) / (sigma ** 2))
 
     return k
 
@@ -222,7 +222,8 @@ def main():
             optimizer.step()
 
         ika.compute_linear_layer(T(X[:args.gram_size]), G, eps=1e-4)
-        print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(X_test, G_val)}")
+        print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(
+            X_test, G_val)}")
 
         torch.save({
             "features": ika_features.state_dict(),
