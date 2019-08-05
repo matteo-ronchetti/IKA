@@ -124,9 +124,10 @@ def main():
     parser.add_argument("--sigma", default=1.0, type=float)
 
     parser.add_argument("--lr", default=1e-4, type=float)
-    parser.add_argument("--batch-size", default=512, type=int)
+    parser.add_argument("--batch-size", default=256, type=int)
     parser.add_argument("--iterations", default=20, type=int)
-    parser.add_argument("--iter-size", default=50, type=int)
+    parser.add_argument("--iter-size", default=100, type=int)
+    parser.add_argument("--accumulation-steps", default=10, type=int)
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -204,9 +205,10 @@ def main():
     x_batches = BatchGenerator(args.batch_size, X, device)
     y_batches = BatchGenerator(args.batch_size, X, device)
 
+    optimizer.zero_grad()
     for iteration in range(args.iterations):
         tot_loss = 0
-        for _ in tqdm(range(args.iter_size)):
+        for i in tqdm(range(args.iter_size)):
             tx = random_transform()
             ty = random_transform()
 
@@ -222,9 +224,10 @@ def main():
             loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
 
-            optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            if (i + 1) % args.accumulation_steps == 0:
+                optimizer.step()  # Now we can do an optimizer step
+                optimizer.zero_grad()
 
         ika.compute_linear_layer(T(x), G, eps=1e-4)
         print(f"Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(x_test, G_val)}")
