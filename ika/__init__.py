@@ -80,4 +80,4 @@ class IKA(nn.Module):
         with torch.no_grad():
             y = self(x)
             G_ = y @ y.t()
-            return torch.sqrt(torch.sum((G - G_) ** 2)).item()
+            return torch.sqrt(torch.sum((G - G_) ** 2)).item(), torch.sqrt(torch.sum(G ** 2)).item()

@@ -12,7 +12,7 @@ def feed_model(X, mdl, device, output_size, batch_size=1024 * 8):
     s = 0
     with torch.no_grad():
         for x, in tqdm(dl):
-            x = x.to(device).float().unsqueeze(1) / 255
+            x = x.to(device).float() / 255
 
             Y[s: s + x.size(0)] = mdl(x).data.cpu()
             s += x.size(0)
