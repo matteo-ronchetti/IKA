@@ -156,11 +156,11 @@ def main():
     # TODO correct removal of val samples when loading precomputed data
     X = X[torch.randperm(X.size(0))]
     X_val = X[-3000:]
-    X_val = X_val.to(device)
+    X_val = X_val.float().to(device) / 255
     X = X[:-3000]
 
     if args.precomputed:
-        G, gx, X_val, G_val, filters, sigma = load_npz(args.precomputed, "G", "G_val", "filters", "sigma")
+        G, gx, X_val, G_val, filters, sigma = load_npz(args.precomputed, "G", "gx", "X_val", "G_val", "filters", "sigma")
         G = torch.FloatTensor(G).to(device)
         G_val = torch.FloatTensor(G_val).to(device)
         X_val = torch.FloatTensor(X_val).to(device)
@@ -184,7 +184,7 @@ def main():
             transformations = [T]
 
         kernel = RBF(sigma)
-        gx = X[:args.gram_size].to(device)
+        gx = X[:args.gram_size].float().to(device) / 255
         G = compute_gramian(gx, kernel, hardnet, transformations)
         G_val = compute_gramian(X_val, kernel, hardnet, transformations)
 
@@ -193,7 +193,7 @@ def main():
                  sigma=sigma)
 
     # create ika features
-    W = filters.reshape(-1, 128) / sigma ** 2
+    W = filters / sigma ** 2
     bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
 
     # create b function as hardnet + RBF layer
@@ -202,7 +202,6 @@ def main():
         nn.Linear(128, args.functions),
         Exp()
     )
-    ika_features.train()
     ika_features[-2].weight.data = torch.FloatTensor(W)
     ika_features[-2].bias.data = torch.FloatTensor(bias)
     ika_features = ika_features.to(device)
@@ -213,11 +212,12 @@ def main():
         gx = T(gx)
         x_val = T(X_val)
 
+    ika_features.eval()
     ika.compute_linear_layer(gx, G, eps=1e-4)
-
     print("Error before training", ika.measure_error(x_val, G_val))
+    #ika_features.train()
 
-    optimizer = torch.optim.Adam(ika.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(list(ika_features[-2].parameters()) + list(ika.linear), lr=args.lr)
 
     x_batches = BatchGenerator(args.batch_size, X, device)
     y_batches = BatchGenerator(args.batch_size, X, device)
@@ -250,10 +250,11 @@ def main():
                 optimizer.step()
                 optimizer.zero_grad()
 
+        ika_features.eval()
         ika.compute_linear_layer(gx, G, eps=1e-4)
         print(f"""Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(
             x_val, G_val)}""")
-
+        #ika_features.train()
     torch.save({
         "features": ika_features.state_dict(),
         "ika": ika.linear
