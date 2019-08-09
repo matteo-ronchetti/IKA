@@ -113,13 +113,6 @@ def RBF(sigma):
     return k
 
 
-def load_hardnet(path, device):
-    hardnet = HardNet().to(device)
-    checkpoint = torch.load(path, map_location=device)
-    hardnet.load_state_dict(checkpoint['state_dict'])
-    return hardnet
-
-
 # noinspection PyArgumentList
 def main():
     parser = argparse.ArgumentParser()
@@ -147,7 +140,7 @@ def main():
         device = torch.device("cpu")
 
     # load hardnet
-    hardnet = load_hardnet(args.hardnet, device)
+    hardnet = HardNet.from_file(args.hardnet, device)
     hardnet.eval()
 
     X, T = get_dataset_and_default_transform(args.dataset)
@@ -198,7 +191,7 @@ def main():
 
     # create b function as hardnet + RBF layer
     ika_features = nn.Sequential(
-        load_hardnet(args.hardnet, device),
+        HardNet.from_file(args.hardnet, device),
         nn.Linear(128, args.functions),
         Exp()
     )
@@ -215,6 +208,12 @@ def main():
     ika_features.eval()
     ika.compute_linear_layer(gx, G, eps=1e-4)
     print("Error before training", ika.measure_error(x_val, G_val))
+
+    torch.save({
+        "features": ika_features.state_dict(),
+        "ika": ika.linear
+    }, "model.pth")
+
     #ika_features.train()
 
     optimizer = torch.optim.Adam(list(ika_features[-2].parameters()) + list(ika.linear), lr=args.lr)
@@ -255,6 +254,7 @@ def main():
         print(f"""Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(
             x_val, G_val)}""")
         #ika_features.train()
+
     torch.save({
         "features": ika_features.state_dict(),
         "ika": ika.linear
