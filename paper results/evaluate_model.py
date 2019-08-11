@@ -23,7 +23,8 @@ def error_rate_at_recall(distances, labels, recall=0.95):
 
     FP = np.sum(labels[:threshold_index] == 0)  # Below threshold (i.e., labelled positive), but should be negative
     TN = np.sum(labels[threshold_index:] == 0)  # Above threshold (i.e., labelled negative), and should be negative
-    return float(FP) / float(FP + TN)
+    print(FP, TN)
+    return 100 * float(FP) / float(FP + TN)
 
 
 def main():
@@ -41,10 +42,10 @@ def main():
 
     if args.model == "hardnet":
         model = HardNet.from_file(args.model_path, device)
-    if args.model == "hardnet+ika":
+    elif args.model == "hardnet+ika":
         ika_features = nn.Sequential(
             HardNet(),
-            nn.Linear(128, args.functions),
+            nn.Linear(128, 1024),
             Exp()
         )
 
@@ -66,13 +67,13 @@ def main():
         SpatialTransformation(dst_size=(32, 32))
     )
 
-    dataloader = DataLoader(dataset, 1024, shuffle=False, pin_memory=True, drop_last=False)
+    dataloader = DataLoader(dataset, 2*1024, shuffle=False, pin_memory=True, drop_last=False)
 
     distances = []
     labels = []
     with torch.no_grad():
         for data_a, data_p, label in tqdm(dataloader):
-            data_a, data_p = data_a.to(device), data_p.to(device)
+            data_a, data_p = data_a.unsqueeze(1).float().to(device) / 255, data_p.unsqueeze(1).float().to(device) / 255
 
             out_a = model(T(data_a))
             out_p = model(T(data_p))
@@ -82,7 +83,7 @@ def main():
             labels.append(ll)
 
     labels = np.vstack(labels).reshape(-1)
-    distances = np.vstack(distances)
+    distances = np.vstack(distances).reshape(-1)
     print(labels.shape, distances.shape)
 
     print("Error rate at 95% recall", error_rate_at_recall(distances, labels, 0.95))
