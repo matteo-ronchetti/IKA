@@ -153,23 +153,23 @@ def main():
 
     # X = X[torch.randperm(X.size(0))]
 
-    x = X[:10].float() / 255
-    y = hardnet(T(x))
-    kernel = RBF(1.0)
-
-    tn = TruncatedNormal()
-
-    seq = []
-    for i in range(1000):
-        seq.append(torch.mean(compute_gramian(x, x, kernel, hardnet, [
-            TransformPipeline(SpatialTransformation(translation=(tn(0, 0.02), 0), dst_size=(32, 32)))])).item())
-
-    seq = np.asarray(seq)
-    mean = np.cumsum(seq) / (1 + np.arange(0, seq.shape[0]))
-    # print(np.cumsum(seq))
-    # print((1 + np.arange(0, seq.shape[0])))
-    plt.plot(mean)
-    plt.show()
+    # x = X[:10].float() / 255
+    # y = hardnet(T(x))
+    # kernel = RBF(1.0)
+    #
+    # tn = TruncatedNormal()
+    #
+    # seq = []
+    # for i in range(1000):
+    #     seq.append(torch.mean(compute_gramian(x, x, kernel, hardnet, [
+    #         TransformPipeline(SpatialTransformation(translation=(tn(0, 0.02), 0), dst_size=(32, 32)))])).item())
+    #
+    # seq = np.asarray(seq)
+    # mean = np.cumsum(seq) / (1 + np.arange(0, seq.shape[0]))
+    # # print(np.cumsum(seq))
+    # # print((1 + np.arange(0, seq.shape[0])))
+    # plt.plot(mean)
+    # plt.show()
 
     # mean = []
     # var = []
@@ -221,7 +221,7 @@ def main():
         features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
         print("Clustering features...")
-        filters = kmeans(features, args.functions, n_iter=30, n_init=5, spherical=True)
+        filters = kmeans(features, args.functions, n_iter=50, n_init=10, spherical=True)
 
         sigma = args.sigma
         print("Sigma", sigma)

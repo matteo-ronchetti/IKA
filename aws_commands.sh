@@ -3,10 +3,10 @@ cd IKA
 mkdir paper\ results/models
 mkdir paper\ results/data
 mkdir paper\ results/data/phototour
-aws s3 cp s3://rosh-datasets/patches/notredame.pt paper\ results/data/phototour
+#aws s3 cp s3://rosh-datasets/patches/notredame.pt paper\ results/data/phototour
 aws s3 cp s3://rosh-datasets/patches/liberty.pt paper\ results/data/phototour
-aws s3 cp s3://rosh-datasets/patches/yosemite.pt paper\ results/data/phototour
-aws s3 cp s3://rosh-datasets/patches/precomputed_yos_02_20k_30.npz paper\ results
+#aws s3 cp s3://rosh-datasets/patches/yosemite.pt paper\ results/data/phototour
+#aws s3 cp s3://rosh-datasets/patches/precomputed_yos_02_20k_30.npz paper\ results
 nvidia-docker run --rm -it -v$(pwd):/code -w /code deepmanager/gpu-pytorch bash
 
 # in Docker
