@@ -76,8 +76,9 @@ class IKA(nn.Module):
             else:
                 self.linear.data = torch.FloatTensor(psi).to(X.device)
 
-    def measure_error(self, x, G):
+    def measure_error(self, x, y, G):
         with torch.no_grad():
-            y = self(x)
-            G_ = y @ y.t()
+            fx = self(x)
+            fy = self(y)
+            G_ = fx @ fy.t()
             return torch.sqrt(torch.sum((G - G_) ** 2)).item(), torch.sqrt(torch.sum(G ** 2)).item()

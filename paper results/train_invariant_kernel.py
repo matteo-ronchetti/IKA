@@ -6,6 +6,8 @@ from torchvision.datasets import PhotoTour
 import torch.nn as nn
 from torch.utils.data import TensorDataset, random_split
 from utils.data import feed_model
+import torchvision
+from matplotlib import pyplot as plt
 
 from tqdm import tqdm
 from architectures.hardnet import HardNet
@@ -16,12 +18,12 @@ from utils.kmeans import kmeans
 from ika import IKA
 
 
-def random_transform():
+def random_transform(s=0.02):
     tn = TruncatedNormal()
 
     return TransformPipeline(
-        SpatialTransformation(translation=(tn(0, 0.02), tn(0, 0.02)), rot=(tn(0, 0.02), tn(0, 0.02), tn(0, 0.02)),
-                              scale=tn(1, 0.02), dst_size=(32, 32)),
+        SpatialTransformation(translation=(tn(0, s), tn(0, s)), rot=(tn(0, s), tn(0, s), tn(0, s)),
+                              scale=tn(1, s), dst_size=(32, 32)),
         # Contrast(tn(1, 0.1)),
         # Greyscale()
     )
@@ -59,8 +61,12 @@ class BatchGenerator:
         return (x.float() / 255).to(self.device)
 
 
-def compute_gramian(X, kernel, model, transformations):
+def compute_gramian(X, Y, kernel, model, transformations):
     X = X.float() / 255
+    Y = Y.float() / 255
+    print("X", torch.min(X), torch.mean(X), torch.max(X))
+    print("Y", torch.min(Y), torch.mean(Y), torch.max(Y))
+
     pb = tqdm(total=len(transformations) ** 2)
 
     with torch.no_grad():
@@ -70,7 +76,7 @@ def compute_gramian(X, kernel, model, transformations):
         for tx in transformations:
             fx = model(tx(X))
             for ty in transformations:
-                fy = model(ty(X))
+                fy = model(ty(Y))
                 G += kernel(fx, fy)
                 pb.update(1)
         pb.close()
@@ -145,24 +151,74 @@ def main():
 
     X, T = get_dataset_and_default_transform(args.dataset)
 
+    # X = X[torch.randperm(X.size(0))]
+
+    x = X[:10].float() / 255
+    y = hardnet(T(x))
+    kernel = RBF(1.0)
+
+    tn = TruncatedNormal()
+
+    seq = []
+    for i in range(1000):
+        seq.append(torch.mean(compute_gramian(x, x, kernel, hardnet, [
+            TransformPipeline(SpatialTransformation(translation=(tn(0, 0.02), 0), dst_size=(32, 32)))])).item())
+
+    seq = np.asarray(seq)
+    mean = np.cumsum(seq) / (1 + np.arange(0, seq.shape[0]))
+    # print(np.cumsum(seq))
+    # print((1 + np.arange(0, seq.shape[0])))
+    plt.plot(mean)
+    plt.show()
+
+    # mean = []
+    # var = []
+    # for alpha in range(-20, 21):
+    #     T = TransformPipeline(SpatialTransformation(translation=(alpha / 10, 0), dst_size=(32, 32)))
+    #     G = kernel(hardnet(T(x)), y)
+    #     mean.append(torch.mean(G).item())
+    #     var.append(torch.var(G).item())
+
+    # mean = np.asarray(mean)
+    # var = np.asarray(var)
+    # print(var)
+    # plt.plot([x for x in range(-20, 21)], mean)
+    # plt.fill_between([x for x in range(-20, 21)], mean - var, mean + var,
+    #                  color='gray', alpha=0.2)
+    # plt.show()
+    #
+    # # for i in range(3):
+    # #     grid_img = torchvision.utils.make_grid(random_transform(0.1)(x), nrow=10)
+    # #     plt.figure()
+    # #     plt.imshow(grid_img.permute(1, 2, 0))
+    # # plt.show()
+    # return
+
     # shuffle X
     # TODO correct removal of val samples when loading precomputed data
     X = X[torch.randperm(X.size(0))]
     X_val = X[-3000:]
-    X_val = X_val.float().to(device) / 255
-    X = X[:-3000]
+    X_val = X_val.to(device)
+    X_val_r = X[-6000:-3000]
+    X_val_r = X_val_r.to(device)
+
+    X = X[:-6000]
 
     if args.precomputed:
-        G, gx, X_val, G_val, filters, sigma = load_npz(args.precomputed, "G", "gx", "X_val", "G_val", "filters", "sigma")
+        # G, gx, X_val, X_val_r, G_val, filters, sigma = load_npz(args.precomputed, "G", "gx", "X_val", "X_val_r", "G_val", "filters", "sigma")
+        G, gx, X_val, X_val_r, G_val, filters, sigma = load_npz(args.precomputed, "G", "gx", "X_val", "X_val", "G_val",
+                                                                "filters", "sigma")
+
         G = torch.FloatTensor(G).to(device)
         G_val = torch.FloatTensor(G_val).to(device)
         X_val = torch.FloatTensor(X_val).to(device)
+        X_val_r = torch.FloatTensor(X_val_r).to(device)
         gx = torch.FloatTensor(gx).to(device)
         sigma = float(sigma)
         kernel = RBF(sigma)
     else:
         print("Feeding dataset through HardNet...")
-        features = feed_model(X, lambda x: hardnet(T(x)), device, 2048)
+        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
         print("Clustering features...")
         filters = kmeans(features, args.functions, n_iter=30, n_init=5, spherical=True)
@@ -178,10 +234,11 @@ def main():
 
         kernel = RBF(sigma)
         gx = X[:args.gram_size].float().to(device) / 255
-        G = compute_gramian(gx, kernel, hardnet, transformations)
-        G_val = compute_gramian(X_val, kernel, hardnet, transformations)
+        G = compute_gramian(gx, gx, kernel, hardnet, transformations)
+        G_val = compute_gramian(X_val, X_val_r, kernel, hardnet, transformations)
 
         np.savez("precomputed.npz", G=G.data.cpu().numpy(), gx=gx.data.cpu().numpy(), X_val=X_val.data.cpu().numpy(),
+                 X_val_r=X_val_r.data.cpu().numpy(),
                  G_val=G_val.data.cpu().numpy(), filters=filters,
                  sigma=sigma)
 
@@ -191,16 +248,19 @@ def main():
 
     print("Feeding dataset through HardNet...")
     with torch.no_grad():
-        y = feed_model(X[:30000], lambda x: hardnet(T(x)), device, 2048)
+        y = feed_model(X[:30000], lambda x: hardnet(T(x)), device, 128)
         mean = torch.mean(y, dim=0)
-        print(mean.size())
+        # print(mean.size())
         y -= mean[None, :]
-        y /= torch.sqrt(float(y.size(0)))
+        mean = mean.data.cpu().numpy()
+        y /= np.sqrt(float(y.size(0)))
 
         d, V = np.linalg.eigh((y.t() @ y).data.cpu().numpy())
+        # print(mean)
+        # print(d)
 
-        d += np.mean(d)
-        d /= d[-1]
+        # d += np.mean(d)
+        # d /= d[-1]
 
         P = V @ np.diag(1 / np.sqrt(d)) @ V.T
         P_inv = V @ np.diag(np.sqrt(d)) @ V.T
@@ -225,20 +285,24 @@ def main():
     ika = IKA(ika_features)
     with torch.no_grad():
         gx = T(gx)
-        x_val = T(X_val)
+        x_val = T(X_val.float() / 255)
+        x_val_r = T(X_val_r.float() / 255)
+
+        print("x_val", torch.min(x_val), torch.mean(x_val), torch.max(x_val))
+        print("x_val_r", torch.min(x_val_r), torch.mean(x_val_r), torch.max(x_val_r))
 
     ika_features.eval()
     ika.compute_linear_layer(gx, G, eps=1e-4)
-    print("Error before training", ika.measure_error(x_val, G_val))
+    print("Error before training", ika.measure_error(x_val, x_val_r, G_val))
 
     torch.save({
         "features": ika_features.state_dict(),
         "ika": ika.linear
     }, "model.pth")
 
-    #ika_features.train()
+    # ika_features.train()
 
-    optimizer = torch.optim.Adam(list(ika_features[-2].parameters()) + list(ika.linear), lr=args.lr)
+    optimizer = torch.optim.Adam(list(ika_features[-2].parameters()), lr=args.lr)
 
     x_batches = BatchGenerator(args.batch_size, X, device)
     y_batches = BatchGenerator(args.batch_size, X, device)
@@ -256,6 +320,7 @@ def main():
 
             xx = x_batches.next_batch()
             y = y_batches.next_batch()
+            # print("xx", torch.min(xx).item(), torch.max(xx).item())
 
             fx = ika(T(xx))
             fy = ika(T(y))
@@ -263,19 +328,19 @@ def main():
             with torch.no_grad():
                 G_ = kernel(hardnet(tx(xx)), hardnet(ty(y)))
 
-            loss = torch.mean((G_ - fx @ fy.t()) ** 2) / args.accumulation_steps
+            loss = torch.mean((G_ - fx @ fy.t()) ** 2)
             tot_loss += loss.item()
 
             loss.backward()
-            if (i + 1) % args.accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+            optimizer.step()
+            optimizer.zero_grad()
 
         ika_features.eval()
         ika.compute_linear_layer(gx, G, eps=1e-4)
-        print(f"""Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, validation error: {ika.measure_error(
-            x_val, G_val)}""")
-        #ika_features.train()
+        print(f"""Iteration: {iteration + 1}, loss: {tot_loss / args.iter_size}, predicted: {np.sqrt(
+            tot_loss / args.iter_size) * 3000}, validation error: {ika.measure_error(
+            x_val, x_val_r, G_val)}""")
+        # ika_features.train()
 
     torch.save({
         "features": ika_features.state_dict(),

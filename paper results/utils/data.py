@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 
-def feed_model(X, mdl, device, output_size, batch_size=1024 * 8):
+def feed_model(X, mdl, device, output_size, batch_size=1024 * 2):
     if isinstance(X, torch.Tensor):
         X = TensorDataset(X)
 
