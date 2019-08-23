@@ -83,23 +83,22 @@ class SpatialTransformation(Transformation):
         self.padding_mode = padding_mode
         self.dst_size = dst_size
 
-    def compile(self, h, w, device):
-        H, W = self.dst_size or (h, w)
-
+    @staticmethod
+    def compute_grid(H, W, translation, rot, scale):
         grid = torch.empty((H, W, 3))
         grid[:, :, 0] = torch.linspace(-1, 1, W)
         grid[:, :, 1] = torch.linspace(-1, 1, H).unsqueeze(1)
-        grid[:, :, 2] = self.scale
+        grid[:, :, 2] = scale
 
         Rx = np.asarray(
-            [[1, 0, 0], [0, np.cos(self.rot[0]), np.sin(self.rot[0])], [0, -np.sin(self.rot[0]), np.cos(self.rot[0])]])
+            [[1, 0, 0], [0, np.cos(rot[0]), np.sin(rot[0])], [0, -np.sin(rot[0]), np.cos(rot[0])]])
         Ry = np.asarray(
-            [[np.cos(self.rot[1]), 0, -np.sin(self.rot[1])], [0, 1, 0], [np.sin(self.rot[1]), 0, np.cos(self.rot[1])]])
+            [[np.cos(rot[1]), 0, -np.sin(rot[1])], [0, 1, 0], [np.sin(rot[1]), 0, np.cos(rot[1])]])
         Rz = np.asarray(
-            [[np.cos(self.rot[2]), np.sin(self.rot[2]), 0], [-np.sin(self.rot[2]), np.cos(self.rot[2]), 0], [0, 0, 1]])
+            [[np.cos(rot[2]), np.sin(rot[2]), 0], [-np.sin(rot[2]), np.cos(rot[2]), 0], [0, 0, 1]])
 
         R = torch.FloatTensor(Rx @ Ry @ Rz)
-        translation = torch.FloatTensor([self.translation[0], self.translation[1], 0])
+        translation = torch.FloatTensor([translation[0], translation[1], 0])
 
         grid = torch.einsum("hwi,ji->hwj", grid + translation, R)
 
@@ -109,7 +108,12 @@ class SpatialTransformation(Transformation):
         t = R @ torch.FloatTensor([0, 0, 1])
         grid -= t
 
-        grid = grid[:, :, :2].contiguous().to(device)
+        return grid[:, :, :2].contiguous()
+
+    def compile(self, h, w, device):
+        H, W = self.dst_size or (h, w)
+
+        grid = self.compute_grid(H, W, self.translation, self.rot, self.scale).to(device)
 
         def f(x):
             return F.grid_sample(x, grid.unsqueeze(0).repeat(x.size(0), 1, 1, 1), padding_mode=self.padding_mode)
