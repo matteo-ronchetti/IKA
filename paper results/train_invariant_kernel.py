@@ -1,4 +1,7 @@
 import argparse
+
+import scipy
+import scipy.linalg
 import torch
 import numpy as np
 import copy
@@ -123,6 +126,7 @@ def RBF(sigma):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="liberty")
+    parser.add_argument("--factor", default="")
     parser.add_argument("--test", action="store_true", default=False)
     parser.add_argument("--precomputed", default=None)
     parser.add_argument("--functions", default=1024, type=int)
@@ -137,6 +141,7 @@ def main():
     parser.add_argument("--accumulation-steps", default=10, type=int)
 
     parser.add_argument("--hardnet", default="models/checkpoint_liberty_no_aug.pth")
+    parser.add_argument("--output", default="factor_model.pth")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -150,6 +155,53 @@ def main():
     hardnet.eval()
 
     X, T = get_dataset_and_default_transform(args.dataset)
+
+    if args.factor:
+        phi = torch.FloatTensor(np.load(args.factor)).to(device)
+
+        print("Feeding dataset through HardNet...")
+        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
+
+        print("Clustering features...")
+        filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
+
+        sigma = args.sigma
+        print("Sigma", sigma)
+
+        # create ika features
+        W = filters / sigma ** 2
+        bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
+
+        print("Feeding dataset through HardNet...")
+
+        # create b function as hardnet + RBF layer
+        ika_features = nn.Sequential(
+            HardNet.from_file(args.hardnet, device),
+            nn.Linear(128, args.functions),
+            Exp()
+        )
+        ika_features[-2].weight.data = torch.FloatTensor(W)
+        ika_features[-2].bias.data = torch.FloatTensor(bias)
+        ika_features = ika_features.to(device)
+
+        B = feed_model(X[:40000], lambda x: ika_features(T(x)), device, 1024)
+        Q, R = torch.qr(B)
+        R = R.data.cpu().numpy()
+        M = phi.t() @ Q
+        M = (M.t() @ M).data.cpu().numpy()
+
+        d, V = scipy.linalg.eigh(M)
+        d = np.sqrt(np.maximum(d, 0))
+        V = scipy.linalg.solve_triangular(R, V)
+
+        linear = torch.FloatTensor(V @ np.diag(d))
+
+        torch.save({
+            "features": ika_features.state_dict(),
+            "ika": linear
+        }, args.output)
+
+        return
 
     # X = X[torch.randperm(X.size(0))]
 
