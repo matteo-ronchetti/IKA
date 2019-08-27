@@ -154,7 +154,7 @@ def main():
 
     # load hardnet
     hardnet = HardNet.from_file(args.hardnet, device)
-    hardnet.eval()
+    #hardnet.eval()
 
     X, T = get_dataset_and_default_transform(args.dataset)
 
@@ -191,8 +191,8 @@ def main():
         ika_features = ika_features.to(device)
         ika_features.eval()
 
-        X_train = X[:35000]
-        phi_train = phi[:35000]
+        X_train = X[:40000]
+        phi_train = phi[:40000]
         X_test = X[35000:40000]
         phi_test = phi[35000:40000]
 
@@ -206,14 +206,14 @@ def main():
         d = np.sqrt(np.maximum(d, 0))
         V = scipy.linalg.solve_triangular(R, V)
 
-        linear = torch.FloatTensor(V @ np.diag(d))
+        linear = torch.FloatTensor(V @ np.diag(d)).to(device)
 
         G = phi_test @ phi_test.t()
 
         model = IKA(ika_features)
         model.linear = linear
 
-        print(model.measure_error(X_test.to(device).float() / 255, None, G))
+        print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
 
         torch.save({
             "features": ika_features.state_dict(),

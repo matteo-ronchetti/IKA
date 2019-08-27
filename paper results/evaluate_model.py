@@ -45,7 +45,7 @@ def main():
     elif args.model == "hardnet+ika":
         ika_features = nn.Sequential(
             HardNet(),
-            nn.Linear(128, 128),
+            #nn.Linear(128, 128),
             nn.Linear(128, 1024),
             Exp()
         )
