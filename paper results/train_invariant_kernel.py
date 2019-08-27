@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import scipy
 import scipy.linalg
@@ -10,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, random_split
 from utils.data import feed_model
 import torchvision
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 from tqdm import tqdm
 from architectures.hardnet import HardNet
@@ -142,6 +143,7 @@ def main():
 
     parser.add_argument("--hardnet", default="models/checkpoint_liberty_no_aug.pth")
     parser.add_argument("--output", default="factor_model.pth")
+    parser.add_argument("--filters", default="filters.npy")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -159,11 +161,15 @@ def main():
     if args.factor:
         phi = torch.FloatTensor(np.load(args.factor)).to(device)
 
-        print("Feeding dataset through HardNet...")
-        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
+        if os.path.exists(args.filters):
+            filters = np.load(args.filters)
+        else:
+            print("Feeding dataset through HardNet...")
+            features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
-        print("Clustering features...")
-        filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
+            print("Clustering features...")
+            filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
+            np.save(args.filters, filters)
 
         sigma = args.sigma
         print("Sigma", sigma)
@@ -183,11 +189,17 @@ def main():
         ika_features[-2].weight.data = torch.FloatTensor(W)
         ika_features[-2].bias.data = torch.FloatTensor(bias)
         ika_features = ika_features.to(device)
+        ika_features.eval()
 
-        B = feed_model(X[:40000], lambda x: ika_features(T(x)), device, 1024)
+        X_train = X[:35000]
+        phi_train = phi[:35000]
+        X_test = X[35000:40000]
+        phi_test = phi[35000:40000]
+
+        B = feed_model(X_train, lambda x: ika_features(T(x)), device, 1024)
         Q, R = torch.qr(B)
         R = R.data.cpu().numpy()
-        M = phi.t() @ Q
+        M = phi_train.t() @ Q
         M = (M.t() @ M).data.cpu().numpy()
 
         d, V = scipy.linalg.eigh(M)
@@ -195,6 +207,13 @@ def main():
         V = scipy.linalg.solve_triangular(R, V)
 
         linear = torch.FloatTensor(V @ np.diag(d))
+
+        G = phi_test @ phi_test.t()
+
+        model = IKA(ika_features)
+        model.linear = linear
+
+        print(model.measure_error(X_test, None, G))
 
         torch.save({
             "features": ika_features.state_dict(),

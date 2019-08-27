@@ -79,6 +79,9 @@ class IKA(nn.Module):
     def measure_error(self, x, y, G):
         with torch.no_grad():
             fx = self(x)
-            fy = self(y)
+            if y is None:
+                fy = fx
+            else:
+                fy = self(y)
             G_ = fx @ fy.t()
             return torch.sqrt(torch.sum((G - G_) ** 2)).item(), torch.sqrt(torch.sum(G ** 2)).item()
