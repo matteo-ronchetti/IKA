@@ -213,7 +213,7 @@ def main():
         model = IKA(ika_features)
         model.linear = linear
 
-        print(model.measure_error(X_test, None, G))
+        print(model.measure_error(X_test.to(device).float() / 255, None, G))
 
         torch.save({
             "features": ika_features.state_dict(),
