@@ -203,6 +203,7 @@ def main():
     # compute quadrature weights
     w = torch.FloatTensor(estimator.quadrature_weights(grid)).to(device)
 
+    ts = transformations.size(0)
     bs = 1 + 500 // transformations.size(0)
     print("Batch size", bs)
     dataloader = DataLoader(dataset, bs, shuffle=False, pin_memory=True, drop_last=False)
@@ -212,12 +213,17 @@ def main():
     print("Size", size)
     Y = torch.empty((size, 4096)).to(device)
     i = 0
-
+    print(w.size())
+    w = w.unsqueeze(0).repeat(bs, 1).view(bs, 1, 15)
+    print(w.size())
     for x in tqdm(dataloader):
         x = x.unsqueeze(1).float().to(device) / 255
         with torch.no_grad():
-            Y[i:i + bs] = w @ model(
-                F.grid_sample(x.repeat(transformations.size(0), 1, 1, 1), transformations, padding_mode="border"))
+            tmp = F.grid_sample(x.repeat(ts, 1, 1, 1), transformations, padding_mode="border")
+            #print(tmp.size())
+            y = model(tmp).view(bs, -1, 4096)
+            #print(y.size(), w.size())
+            Y[i:i + bs] = torch.bmm(w, y).squeeze(1)
             i += bs
             if i >= size:
                 break

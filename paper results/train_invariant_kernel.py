@@ -159,6 +159,7 @@ def main():
     X, T = get_dataset_and_default_transform(args.dataset)
 
     if args.factor:
+        with torch.no_grad():
         phi = torch.FloatTensor(np.load(args.factor)).to(device)
 
         if os.path.exists(args.filters):
@@ -209,9 +210,13 @@ def main():
         linear = torch.FloatTensor(V @ np.diag(d)).to(device)
 
         G = phi_test @ phi_test.t()
-
+        print(G.size())
         model = IKA(ika_features)
         model.linear = linear
+
+        del B
+        del Q
+        del M
 
         print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
 
