@@ -231,7 +231,7 @@ def main():
             tensors = []
             tot = 0
             for obj in gc.get_objects():
-                if torch.is_tensor(obj) and obj.device == device:
+                if torch.is_tensor(obj) and obj.device.type == device.type:
                     tot += obj.element_size() * obj.nelement()
                     tensors.append((obj.element_size() * obj.nelement(), obj.size(), obj.device))
             tensors.sort(key=lambda x: x[0], reverse=True)
@@ -239,7 +239,10 @@ def main():
                 print(t)
             print(tot, torch.cuda.memory_allocated())
 
-            x = T(X_test.to(device).float() / 255)
+            print(X_test.size())
+            x = X_test.to(device).float() / 255
+            print(x.size(), torch.cuda.memory_allocated())
+            x = T(x)
             print(x.size(), torch.cuda.memory_allocated())
             print(model.measure_error(x, None, G))
 
