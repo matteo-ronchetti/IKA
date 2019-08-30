@@ -156,11 +156,12 @@ def main():
     hardnet = HardNet.from_file(args.hardnet, device)
     # hardnet.eval()
 
-    X, T = get_dataset_and_default_transform(args.dataset)
-
     if args.factor:
         with torch.no_grad():
-            phi = torch.FloatTensor(np.load(args.factor)).to(device)
+            phi, X = load_npz(args.factor, ["phi", "X"])
+            phi = torch.FloatTensor(phi).to(device)
+            X = torch.ByteTensor(X).to(device)
+            T = TransformPipeline(SpatialTransformation(dst_size=(32, 32)))
 
             if os.path.exists(args.filters):
                 filters = np.load(args.filters)
@@ -194,7 +195,7 @@ def main():
 
             X_train = X[:55000]
             phi_train = phi[:55000]
-            X_test = X[55000:phi.size(0)]
+            X_test = X[55000:]
             phi_test = phi[55000:]
 
             B = feed_model(X_train, lambda x: ika_features(T(x)), device, 1024)
@@ -214,30 +215,12 @@ def main():
             model = IKA(ika_features)
             model.linear = linear
 
-            print("Usage", torch.cuda.memory_allocated())
-
             del B
             del Q
             del M
             del phi
             del X_train
             del phi_train
-
-            print("Usage", torch.cuda.memory_allocated())
-
-            gc.collect()
-            print("Usage", torch.cuda.memory_allocated())
-
-            tensors = []
-            tot = 0
-            for obj in gc.get_objects():
-                if torch.is_tensor(obj) and obj.device.type == device.type:
-                    tot += obj.element_size() * obj.nelement()
-                    tensors.append((obj.element_size() * obj.nelement(), obj.size(), obj.device))
-            tensors.sort(key=lambda x: x[0], reverse=True)
-            for t in tensors:
-                print(t)
-            print(tot, torch.cuda.memory_allocated())
 
             print(X_test.size())
             x = X_test.to(device).float() / 255
@@ -295,6 +278,8 @@ def main():
     # #     plt.imshow(grid_img.permute(1, 2, 0))
     # # plt.show()
     # return
+
+    X, T = get_dataset_and_default_transform(args.dataset)
 
     # shuffle X
     # TODO correct removal of val samples when loading precomputed data

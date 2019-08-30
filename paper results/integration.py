@@ -15,7 +15,7 @@ from tqdm import tqdm
 from architectures.layers import Exp
 from architectures.hardnet import HardNet
 from torchvision.datasets import PhotoTour
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from transformation import TransformPipeline, SpatialTransformation
 
 import torch
@@ -60,14 +60,18 @@ class GaussianExpectedValueEstimator:
 
     def compute_grid(self, dim, angles, radii, optimize_iter=3000):
         grid = spherical_grid(dim, angles, radii)
-
         x = Variable(torch.FloatTensor(grid), requires_grad=True)
         optimizer = torch.optim.Adam([x], lr=3e-3)
 
+        with torch.no_grad():
+            D = torch_distance_matrix(x, x, squared=True)
+            S = torch.sum(x ** 2, dim=1)
+            print(f"Distance range {(torch.min(D + torch.eye(x.size(0)) * 1e30).item(), torch.max(D).item())}")
+
         def f(k):
             with torch.no_grad():
-                G = torch.exp(-0.5 * torch_distance_matrix(k * x, k * x, squared=True) / self.kernel_sigma)
-                c = torch.exp(-(0.5 * torch.sum((k * x) ** 2, dim=1)) / (self.sigma + self.kernel_sigma)).view(-1, 1)
+                G = torch.exp(-0.5 * k ** 2 * D / self.kernel_sigma)
+                c = torch.exp(-(0.5 * k ** 2 * S) / (self.sigma + self.kernel_sigma)).view(-1, 1)
 
                 y, _ = torch.solve(c, G)
                 return (-c.t() @ y).item()
@@ -77,18 +81,19 @@ class GaussianExpectedValueEstimator:
         print("Grid scale:", k)
 
         x.data *= k
-        optimizer.zero_grad()
 
-        for _ in tqdm(range(optimize_iter)):
-            G = torch.exp(-0.5 * torch_distance_matrix(x, x, squared=True) / self.kernel_sigma)
-            c = torch.exp(-(0.5 * torch.sum(x ** 2, dim=1)) / (self.sigma + self.kernel_sigma)).view(-1, 1)
-
-            y, _ = torch.solve(c, G)
-            loss = - c.t() @ y
-
+        if optimize_iter > 0:
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            for _ in tqdm(range(optimize_iter)):
+                G = torch.exp(-0.5 * torch_distance_matrix(x, x, squared=True) / self.kernel_sigma)
+                c = torch.exp(-(0.5 * torch.sum(x ** 2, dim=1)) / (self.sigma + self.kernel_sigma)).view(-1, 1)
+
+                y, _ = torch.solve(c, G)
+                loss = - c.t() @ y
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
         return x.data.numpy()
 
@@ -165,9 +170,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="liberty")
     parser.add_argument("--sampling-points", default=25, type=int)
+    parser.add_argument("--gram-size", default=60000, type=int)
     parser.add_argument("--sigma", default=1.0, type=float)
     parser.add_argument("--model", default="models/model_4096.pth")
-    parser.add_argument("--output", default="integrated.npy")
+    parser.add_argument("--output", default="integrated.npz")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -178,9 +184,10 @@ def main():
 
     model = load_pretrained(args.model, device)
 
-    # load dataset
+    # load and shuffle dataset
     dataset = PhotoTour("data/phototour", "liberty", download=True, train=True)
-    dataloader = DataLoader(dataset, 1, shuffle=False, pin_memory=True, drop_last=False)
+    X = dataset.data.unsqueeze(1)
+    X = X[torch.randperm(X.size(0))]
 
     # compute the first grid used to choose kernel sigma
     estimator = GaussianExpectedValueEstimator(0.25, args.sigma)
@@ -189,7 +196,7 @@ def main():
     test_points = np.random.randn(200, 1)
 
     # find a good kernel sigma
-    x = next(iter(dataloader)).unsqueeze(1).to(device).float() / 255
+    x = X[0].to(device).float() / 255
     interpolation_error_f = kernel_interpolation_error(model, train_points, test_points, x, device)
     kernel_sigma = dlib.find_min_global(interpolation_error_f, [0.01], [4.0], 50)[0][0]
     print("Kernel Sigma:", kernel_sigma)
@@ -197,7 +204,6 @@ def main():
 
     # compute and optimize the grid of points
     grid = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=3000)
-    print(grid)
     transformations = points_to_transformation(grid).to(device)
 
     # compute quadrature weights
@@ -205,30 +211,28 @@ def main():
 
     ts = transformations.size(0)
     bs = 1 + 500 // transformations.size(0)
-    print("Batch size", bs)
-    dataloader = DataLoader(dataset, bs, shuffle=False, pin_memory=True, drop_last=False)
+    size = (args.gram_size // bs) * bs
+
+    print(f"Size: {size}, Batch size: {bs}")
+    dataloader = DataLoader(TensorDataset(X[:size]), bs, shuffle=False, pin_memory=True, drop_last=False)
     transformations = transformations.repeat(bs, 1, 1, 1).contiguous()
 
-    size = (60000 // bs) * bs
-    print("Size", size)
     Y = torch.empty((size, 4096)).to(device)
+    w = w.unsqueeze(0).repeat(bs, 1).view(bs, 1, -1)
     i = 0
-    print(w.size())
-    w = w.unsqueeze(0).repeat(bs, 1).view(bs, 1, 15)
-    print(w.size())
-    for x in tqdm(dataloader):
-        x = x.unsqueeze(1).float().to(device) / 255
+    for x, in tqdm(dataloader):
+        x = x.float().to(device) / 255
         with torch.no_grad():
             tmp = F.grid_sample(x.repeat(ts, 1, 1, 1), transformations, padding_mode="border")
-            #print(tmp.size())
+            # print(tmp.size())
             y = model(tmp).view(bs, -1, 4096)
-            #print(y.size(), w.size())
+            # print(y.size(), w.size())
             Y[i:i + bs] = torch.bmm(w, y).squeeze(1)
             i += bs
             if i >= size:
                 break
-
-    np.save(args.output, Y.cpu().data.numpy())
+    print(i, "==", size)
+    np.savez(args.output, phi=Y.cpu().data.numpy(), X=X.cpu().data.numpy())
 
 
 if __name__ == "__main__":
