@@ -194,7 +194,7 @@ def main():
 
             X_train = X[:55000]
             phi_train = phi[:55000]
-            X_test = X[55000:]
+            X_test = X[55000:phi.size(0)]
             phi_test = phi[55000:]
 
             B = feed_model(X_train, lambda x: ika_features(T(x)), device, 1024)
