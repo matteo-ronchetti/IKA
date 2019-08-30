@@ -197,21 +197,29 @@ def main():
 
     # compute and optimize the grid of points
     grid = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=3000)
+    print(grid)
     transformations = points_to_transformation(grid).to(device)
 
     # compute quadrature weights
     w = torch.FloatTensor(estimator.quadrature_weights(grid)).to(device)
 
-    Y = torch.empty((40000, 4096)).to(device)
+    bs = 1 + 500 // transformations.size(0)
+    print("Batch size", bs)
+    dataloader = DataLoader(dataset, bs, shuffle=False, pin_memory=True, drop_last=False)
+    transformations = transformations.repeat(bs, 1, 1, 1).contiguous()
+
+    size = (60000 // bs) * bs
+    print("Size", size)
+    Y = torch.empty((size, 4096)).to(device)
     i = 0
 
     for x in tqdm(dataloader):
         x = x.unsqueeze(1).float().to(device) / 255
         with torch.no_grad():
-            Y[i] = w @ model(
+            Y[i:i + bs] = w @ model(
                 F.grid_sample(x.repeat(transformations.size(0), 1, 1, 1), transformations, padding_mode="border"))
-            i += 1
-            if i == 40000:
+            i += bs
+            if i >= size:
                 break
 
     np.save(args.output, Y.cpu().data.numpy())
