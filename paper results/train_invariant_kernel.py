@@ -160,72 +160,72 @@ def main():
 
     if args.factor:
         with torch.no_grad():
-        phi = torch.FloatTensor(np.load(args.factor)).to(device)
+            phi = torch.FloatTensor(np.load(args.factor)).to(device)
 
-        if os.path.exists(args.filters):
-            filters = np.load(args.filters)
-        else:
+            if os.path.exists(args.filters):
+                filters = np.load(args.filters)
+            else:
+                print("Feeding dataset through HardNet...")
+                features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
+
+                print("Clustering features...")
+                filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
+                np.save(args.filters, filters)
+
+            sigma = args.sigma
+            print("Sigma", sigma)
+
+            # create ika features
+            W = filters / sigma ** 2
+            bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
+
             print("Feeding dataset through HardNet...")
-            features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
-            print("Clustering features...")
-            filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
-            np.save(args.filters, filters)
+            # create b function as hardnet + RBF layer
+            ika_features = nn.Sequential(
+                HardNet.from_file(args.hardnet, device),
+                nn.Linear(128, args.functions),
+                Exp()
+            )
+            ika_features[-2].weight.data = torch.FloatTensor(W)
+            ika_features[-2].bias.data = torch.FloatTensor(bias)
+            ika_features = ika_features.to(device)
+            ika_features.eval()
 
-        sigma = args.sigma
-        print("Sigma", sigma)
+            X_train = X[:55000]
+            phi_train = phi[:55000]
+            X_test = X[55000:]
+            phi_test = phi[55000:]
 
-        # create ika features
-        W = filters / sigma ** 2
-        bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
+            B = feed_model(X_train, lambda x: ika_features(T(x)), device, 1024)
+            Q, R = torch.qr(B)
+            R = R.data.cpu().numpy()
+            M = phi_train.t() @ Q
+            M = (M.t() @ M).data.cpu().numpy()
 
-        print("Feeding dataset through HardNet...")
+            d, V = scipy.linalg.eigh(M)
+            d = np.sqrt(np.maximum(d, 0))
+            V = scipy.linalg.solve_triangular(R, V)
 
-        # create b function as hardnet + RBF layer
-        ika_features = nn.Sequential(
-            HardNet.from_file(args.hardnet, device),
-            nn.Linear(128, args.functions),
-            Exp()
-        )
-        ika_features[-2].weight.data = torch.FloatTensor(W)
-        ika_features[-2].bias.data = torch.FloatTensor(bias)
-        ika_features = ika_features.to(device)
-        ika_features.eval()
+            linear = torch.FloatTensor(V @ np.diag(d)).to(device)
 
-        X_train = X[:55000]
-        phi_train = phi[:55000]
-        X_test = X[55000:]
-        phi_test = phi[55000:]
+            G = phi_test @ phi_test.t()
+            print(G.size())
+            model = IKA(ika_features)
+            model.linear = linear
 
-        B = feed_model(X_train, lambda x: ika_features(T(x)), device, 1024)
-        Q, R = torch.qr(B)
-        R = R.data.cpu().numpy()
-        M = phi_train.t() @ Q
-        M = (M.t() @ M).data.cpu().numpy()
+            del B
+            del Q
+            del M
+    
+            print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
 
-        d, V = scipy.linalg.eigh(M)
-        d = np.sqrt(np.maximum(d, 0))
-        V = scipy.linalg.solve_triangular(R, V)
+            torch.save({
+                "features": ika_features.state_dict(),
+                "ika": linear
+            }, args.output)
 
-        linear = torch.FloatTensor(V @ np.diag(d)).to(device)
-
-        G = phi_test @ phi_test.t()
-        print(G.size())
-        model = IKA(ika_features)
-        model.linear = linear
-
-        del B
-        del Q
-        del M
-
-        print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
-
-        torch.save({
-            "features": ika_features.state_dict(),
-            "ika": linear
-        }, args.output)
-
-        return
+            return
 
     # X = X[torch.randperm(X.size(0))]
 
