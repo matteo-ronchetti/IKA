@@ -225,13 +225,13 @@ def main():
             gc.collect()
             print("Usage", torch.cuda.memory_allocated())
 
+            tensors = []
             for obj in gc.get_objects():
-                tensors = []
                 if torch.is_tensor(obj):
                     tensors.append((obj.element_size() * obj.nelement(), obj.size(), obj.device))
-                tensors.sort(key=lambda x: x[0], reverse=True)
-                for t in tensors:
-                    print(t)
+            tensors.sort(key=lambda x: x[0], reverse=True)
+            for t in tensors:
+                print(t)
 
             print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
 
