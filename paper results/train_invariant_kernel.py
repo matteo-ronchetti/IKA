@@ -1,6 +1,6 @@
 import argparse
 import os
-
+import gc
 import scipy
 import scipy.linalg
 import torch
@@ -217,6 +217,10 @@ def main():
             del B
             del Q
             del M
+
+            for obj in gc.get_objects():
+                if torch.is_tensor(obj):
+                    print(type(obj), obj.size(), obj.element_size() * obj.nelement(), obj.device)
     
             print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
 
