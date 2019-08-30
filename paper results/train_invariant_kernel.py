@@ -229,14 +229,19 @@ def main():
             print("Usage", torch.cuda.memory_allocated())
 
             tensors = []
+            tot = 0
             for obj in gc.get_objects():
-                if torch.is_tensor(obj):
+                if torch.is_tensor(obj) and obj.device == device:
+                    tot += obj.element_size() * obj.nelement()
                     tensors.append((obj.element_size() * obj.nelement(), obj.size(), obj.device))
             tensors.sort(key=lambda x: x[0], reverse=True)
             for t in tensors:
                 print(t)
+            print(tot, torch.cuda.memory_allocated())
 
-            print(model.measure_error(T(X_test.to(device).float() / 255), None, G))
+            x = T(X_test.to(device).float() / 255)
+            print(x.size(), torch.cuda.memory_allocated())
+            print(model.measure_error(x, None, G))
 
             torch.save({
                 "features": ika_features.state_dict(),
