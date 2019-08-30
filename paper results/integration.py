@@ -133,7 +133,7 @@ def load_pretrained(path, device):
 
 def points_to_transformation(x):
     # 1 = 10°
-    return torch.cat([SpatialTransformation.compute_grid(32, 32, translation=(0, 0, 0), rot=(p * 0.174533, 0, 0),
+    return torch.cat([SpatialTransformation.compute_grid(32, 32, translation=(0, 0, 0), rot=(p[0] * 0.174533, 0, 0),
                                                          scale=1).unsqueeze(0) for p in x])
 
 
@@ -189,7 +189,7 @@ def main():
     test_points = np.random.randn(200, 1)
 
     # find a good kernel sigma
-    x = next(iter(dataloader)).unsqueeze(1).float() / 255
+    x = next(iter(dataloader)).unsqueeze(1).to(device).float() / 255
     interpolation_error_f = kernel_interpolation_error(model, train_points, test_points, x, device)
     kernel_sigma = dlib.find_min_global(interpolation_error_f, [0.01], [4.0], 50)[0][0]
     print("Kernel Sigma:", kernel_sigma)
