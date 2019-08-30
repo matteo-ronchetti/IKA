@@ -219,6 +219,9 @@ def main():
             del B
             del Q
             del M
+            del phi
+            del X_train
+            del phi_train
 
             print("Usage", torch.cuda.memory_allocated())
 
