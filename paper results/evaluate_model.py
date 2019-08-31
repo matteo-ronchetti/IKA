@@ -2,7 +2,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
+
 
 from architectures.layers import Exp
 from architectures.hardnet import HardNet
@@ -76,8 +78,8 @@ def main():
         for data_a, data_p, label in tqdm(dataloader):
             data_a, data_p = data_a.unsqueeze(1).float().to(device) / 255, data_p.unsqueeze(1).float().to(device) / 255
 
-            out_a = model(T(data_a))
-            out_p = model(T(data_p))
+            out_a = F.normalize(model(T(data_a)), dim=1)
+            out_p = F.normalize(model(T(data_p)), dim=1)
             dists = torch.sqrt(torch.sum((out_a - out_p) ** 2, 1))  # euclidean distance
             distances.append(dists.data.cpu().numpy().reshape(-1, 1))
             ll = label.data.cpu().numpy().reshape(-1, 1)

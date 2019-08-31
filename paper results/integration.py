@@ -208,6 +208,8 @@ def main():
 
     # compute quadrature weights
     w = torch.FloatTensor(estimator.quadrature_weights(grid)).to(device)
+    print(grid)
+    print(w)
 
     ts = transformations.size(0)
     bs = 1 + 500 // transformations.size(0)
@@ -220,11 +222,12 @@ def main():
 
     Y = torch.empty((size, 4096)).to(device)
     w = w.unsqueeze(0).repeat(bs, 1).view(bs, 1, -1)
+    print(w)
     i = 0
     for x, in tqdm(dataloader):
         x = x.float().to(device) / 255
         with torch.no_grad():
-            tmp = F.grid_sample(x.repeat(ts, 1, 1, 1), transformations, padding_mode="border")
+            tmp = F.grid_sample(x.repeat_interleave(ts, dim=0), transformations, padding_mode="border")
             # print(tmp.size())
             y = model(tmp).view(bs, -1, 4096)
             # print(y.size(), w.size())
