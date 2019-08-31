@@ -123,6 +123,7 @@ def RBF(sigma):
 
     return k
 
+
 def load_pretrained(path, device):
     ika_features = nn.Sequential(
         HardNet(),
@@ -139,6 +140,7 @@ def load_pretrained(path, device):
     model.eval()
     model = model.to(device)
     return model
+
 
 # noinspection PyArgumentList
 def main():
@@ -177,18 +179,13 @@ def main():
         with torch.no_grad():
             phi, X = load_npz(args.factor, "phi", "X")
             phi = torch.FloatTensor(phi).to(device)
-<<<<<<< HEAD
             phi = F.normalize(phi, dim=1)
-            X = torch.ByteTensor(X)
-=======
             X = torch.ByteTensor(X[:phi.size(0)])
-            print(X.size())
->>>>>>> 4af632aaff5441e51ca418d1c067c86dec6f9126
             T = TransformPipeline(SpatialTransformation(dst_size=(32, 32)))
             mdl = load_pretrained("models/model_4096.pth", device)
             phi_2 = feed_model(X, lambda x: mdl(T(x)), device, 4096)
 
-            print(torch.sum((phi - phi_2)**2).item(),torch.sum((phi_2)**2).item())
+            print(torch.sum((phi - phi_2) ** 2).item(), torch.sum((phi_2) ** 2).item())
 
             if os.path.exists(args.filters):
                 filters = np.load(args.filters)
