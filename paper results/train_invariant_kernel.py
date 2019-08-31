@@ -8,6 +8,7 @@ import numpy as np
 import copy
 from torchvision.datasets import PhotoTour
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import TensorDataset, random_split
 from utils.data import feed_model
 import torchvision
@@ -154,13 +155,14 @@ def main():
 
     # load hardnet
     hardnet = HardNet.from_file(args.hardnet, device)
-    # hardnet.eval()
+    hardnet.eval()
 
     if args.factor:
         with torch.no_grad():
             phi, X = load_npz(args.factor, ["phi", "X"])
             phi = torch.FloatTensor(phi).to(device)
-            X = torch.ByteTensor(X).to(device)
+            phi = F.normalize(phi, dim=1)
+            X = torch.ByteTensor(X)
             T = TransformPipeline(SpatialTransformation(dst_size=(32, 32)))
 
             if os.path.exists(args.filters):
@@ -211,22 +213,12 @@ def main():
             linear = torch.FloatTensor(V @ np.diag(d)).to(device)
 
             G = phi_test @ phi_test.t()
-            print(G.size())
             model = IKA(ika_features)
             model.linear = linear
 
-            del B
-            del Q
-            del M
-            del phi
-            del X_train
-            del phi_train
-
             print(X_test.size())
             x = X_test.to(device).float() / 255
-            print(x.size(), torch.cuda.memory_allocated())
             x = T(x)
-            print(x.size(), torch.cuda.memory_allocated())
             print(model.measure_error(x, None, G))
 
             torch.save({

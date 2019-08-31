@@ -7,7 +7,7 @@ def feed_model(X, mdl, device, output_size, batch_size=1024 * 2):
     if isinstance(X, torch.Tensor):
         X = TensorDataset(X)
 
-    dl = DataLoader(X, batch_size=batch_size, drop_last=False, pin_memory=True)
+    dl = DataLoader(X, batch_size=batch_size, shuffle=False, drop_last=False, pin_memory=True)
     Y = torch.zeros((len(X), output_size), dtype=torch.float, device=device)
     s = 0
     with torch.no_grad():

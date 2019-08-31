@@ -214,7 +214,8 @@ def main():
     size = (args.gram_size // bs) * bs
 
     print(f"Size: {size}, Batch size: {bs}")
-    dataloader = DataLoader(TensorDataset(X[:size]), bs, shuffle=False, pin_memory=True, drop_last=False)
+    X = X[:size]
+    dataloader = DataLoader(TensorDataset(X), bs, shuffle=False, pin_memory=True, drop_last=False)
     transformations = transformations.repeat(bs, 1, 1, 1).contiguous()
 
     Y = torch.empty((size, 4096)).to(device)
