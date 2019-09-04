@@ -318,11 +318,15 @@ def main():
         sigma = float(sigma)
         kernel = RBF(sigma)
     else:
-        print("Feeding dataset through HardNet...")
-        features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
+        if os.path.exists(args.filters):
+            filters = np.load(args.filters)
+        else:
+            print("Feeding dataset through HardNet...")
+            features = feed_model(X, lambda x: hardnet(T(x)), device, 128)
 
-        print("Clustering features...")
-        filters = kmeans(features, args.functions, n_iter=50, n_init=10, spherical=True)
+            print("Clustering features...")
+            filters = kmeans(features, args.functions, n_iter=30, n_init=10, spherical=True)
+            np.save(args.filters, filters)
 
         sigma = args.sigma
         print("Sigma", sigma)
@@ -347,37 +351,37 @@ def main():
     W = filters / sigma ** 2
     bias = -np.ones(W.shape[0], dtype=np.float32) / (sigma ** 2)
 
-    print("Feeding dataset through HardNet...")
-    with torch.no_grad():
-        y = feed_model(X[:30000], lambda x: hardnet(T(x)), device, 128)
-        mean = torch.mean(y, dim=0)
-        # print(mean.size())
-        y -= mean[None, :]
-        mean = mean.data.cpu().numpy()
-        y /= np.sqrt(float(y.size(0)))
-
-        d, V = np.linalg.eigh((y.t() @ y).data.cpu().numpy())
-        # print(mean)
-        # print(d)
-
-        # d += np.mean(d)
-        # d /= d[-1]
-
-        P = V @ np.diag(1 / np.sqrt(d)) @ V.T
-        P_inv = V @ np.diag(np.sqrt(d)) @ V.T
-
-        W = W @ P_inv
-        bias = bias + W @ mean
+    # print("Feeding dataset through HardNet...")
+    # with torch.no_grad():
+    #     y = feed_model(X[:30000], lambda x: hardnet(T(x)), device, 128)
+    #     mean = torch.mean(y, dim=0)
+    #     # print(mean.size())
+    #     y -= mean[None, :]
+    #     mean = mean.data.cpu().numpy()
+    #     y /= np.sqrt(float(y.size(0)))
+    #
+    #     d, V = np.linalg.eigh((y.t() @ y).data.cpu().numpy())
+    #     # print(mean)
+    #     # print(d)
+    #
+    #     # d += np.mean(d)
+    #     # d /= d[-1]
+    #
+    #     P = V @ np.diag(1 / np.sqrt(d)) @ V.T
+    #     P_inv = V @ np.diag(np.sqrt(d)) @ V.T
+    #
+    #     W = W @ P_inv
+    #     bias = bias + W @ mean
 
     # create b function as hardnet + RBF layer
     ika_features = nn.Sequential(
         HardNet.from_file(args.hardnet, device),
-        nn.Linear(128, 128),
+        # nn.Linear(128, 128),
         nn.Linear(128, args.functions),
         Exp()
     )
-    ika_features[-3].weight.data = torch.FloatTensor(P)
-    ika_features[-3].bias.data = torch.FloatTensor(-mean)
+    # ika_features[-3].weight.data = torch.FloatTensor(P)
+    # ika_features[-3].bias.data = torch.FloatTensor(-mean)
     ika_features[-2].weight.data = torch.FloatTensor(W)
     ika_features[-2].bias.data = torch.FloatTensor(bias)
     ika_features = ika_features.to(device)
