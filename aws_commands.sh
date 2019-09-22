@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 git clone https://github.com/matteo-ronchetti/IKA.git
 cd IKA
 mkdir paper\ results/models

@@ -138,8 +138,9 @@ def load_pretrained(path, device):
 
 def points_to_transformation(x):
     # 1 = 10°
-    return torch.cat([SpatialTransformation.compute_grid(32, 32, translation=(0, 0, 0), rot=(p[0] * 0.174533, 0, 0),
-                                                         scale=1).unsqueeze(0) for p in x])
+    return torch.cat(
+        [SpatialTransformation.compute_grid(32, 32, translation=(0, 0, 0), rot=(p[0] * 0.174533, 0, 0),
+                                            scale=1).unsqueeze(0) for p in x])
 
 
 def kernel_interpolation_error(model, train_points, test_points, x, device):
@@ -190,26 +191,32 @@ def main():
     X = X[torch.randperm(X.size(0))]
 
     # compute the first grid used to choose kernel sigma
-    estimator = GaussianExpectedValueEstimator(0.25, args.sigma)
-    train_points = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=0)
-    print("Grid has", train_points.shape[0], "points")
-    test_points = np.random.randn(200, 1)
+    # estimator = GaussianExpectedValueEstimator(0.25, args.sigma)
+    # train_points = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=0)
+    # print("Grid has", train_points.shape[0], "points")
+    # test_points = np.random.randn(200, 1)
+    #
+    # # find a good kernel sigma
+    # x = X[0].to(device).float() / 255
+    # interpolation_error_f = kernel_interpolation_error(model, train_points, test_points, x, device)
+    # kernel_sigma = dlib.find_min_global(interpolation_error_f, [0.01], [4.0], 50)[0][0]
+    # print("Kernel Sigma:", kernel_sigma)
+    # estimator.kernel_sigma = kernel_sigma
+    #
+    # # compute and optimize the grid of points
+    # grid = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=3000)
+    # transformations = points_to_transformation(grid).to(device)
 
-    # find a good kernel sigma
-    x = X[0].to(device).float() / 255
-    interpolation_error_f = kernel_interpolation_error(model, train_points, test_points, x, device)
-    kernel_sigma = dlib.find_min_global(interpolation_error_f, [0.01], [4.0], 50)[0][0]
-    print("Kernel Sigma:", kernel_sigma)
-    estimator.kernel_sigma = kernel_sigma
-
-    # compute and optimize the grid of points
-    grid = estimator.compute_grid(1, 0, args.sampling_points, optimize_iter=3000)
-    transformations = points_to_transformation(grid).to(device)
+    with torch.no_grad():
+        grid = torch.linspace(-3*args.sigma, 3*args.sigma, args.sampling_points).view(-1, 1)
+        transformations = points_to_transformation(grid).to(device)
+        w = torch.exp(-grid**2/(2*args.sigma**2)).to(device)
+        w /= torch.sum(w)
 
     # compute quadrature weights
-    w = torch.FloatTensor(estimator.quadrature_weights(grid)).to(device)
-    print(grid)
-    print(w)
+    # w = torch.FloatTensor(estimator.quadrature_weights(grid)).to(device)
+    # print(grid)
+    # print(w)
 
     ts = transformations.size(0)
     bs = 1 + 500 // transformations.size(0)
